@@ -12,9 +12,17 @@ from threading import Thread, enumerate
 from queue import Queue
 serial_name = '/dev/usbcam'
 
-THRESHOLD=85
-DEPTH_COEFFICIENT=0.09
-X_BIAS=0
+
+
+#####################################
+THRESHOLD=85                        
+DEPTH_COEFFICIENT=0.09              
+X_BIAS=0                            
+X_DEVIATION=15     
+#####################################
+
+
+
 
 
 class RB(object):
@@ -34,7 +42,9 @@ class RB(object):
         self.depth_coefficient=0
         self.select_threshold = 0
         self.windowname = 'find_ball'
+        self.windowname_= "setting"
         self.x_bias=0
+        self.x_deviation=0
 
 def parser():
     parser = argparse.ArgumentParser(description="YOLO Object Detection")
@@ -161,19 +171,16 @@ def inference(darknet_image_queue, detections_queue, fps_queue,rb):
         darknet.free_image(darknet_image)
     cap.release()
 
-def change_rbx(rb,x = 100):
-    if abs(rb.x-256) < x:
-        return 256
-    else:
-        return rb.x
 
 def drawing(frame_queue, detections_queue, fps_queue,rb):
     def nothing(x):
         pass
     cv2.namedWindow(rb.windowname,0)
-    cv2.createTrackbar('thresh',rb.windowname,int(rb.select_threshold),100,nothing)
-    cv2.createTrackbar('depth',rb.windowname,50,100,nothing)
-    cv2.createTrackbar('x-bias',rb.windowname,50,100,nothing)
+    cv2.namedWindow(rb.windowname_,0)
+    cv2.createTrackbar('thresh',rb.windowname_,int(rb.select_threshold),100,nothing)
+    cv2.createTrackbar('depth',rb.windowname_,50,100,nothing)
+    cv2.createTrackbar('x-bias',rb.windowname_,50,100,nothing)
+    cv2.createTrackbar('x-deviation',rb.windowname_,X_DEVIATION,100,nothing)
     def c_dis(cclass, r, f): 
         if cclass == 1:
             d = 2460 * f / r           
@@ -183,9 +190,10 @@ def drawing(frame_queue, detections_queue, fps_queue,rb):
     random.seed(3)  # deterministic bbox colors
     video = set_saved_video(cap, args.out_filename, (darknet_width, darknet_height))
     while cap.isOpened():
-        rb.depth_coefficient=cv2.getTrackbarPos('depth',rb.windowname)/50*DEPTH_COEFFICIENT
-        rb.select_threshold=cv2.getTrackbarPos('thresh',rb.windowname)
-        rb.x_bias=int(cv2.getTrackbarPos('x-bias',rb.windowname)-50)+X_BIAS
+        rb.depth_coefficient=cv2.getTrackbarPos('depth',rb.windowname_)/50*DEPTH_COEFFICIENT
+        rb.select_threshold=cv2.getTrackbarPos('thresh',rb.windowname_)
+        rb.x_bias=int(cv2.getTrackbarPos('x-bias',rb.windowname_)-50)+X_BIAS
+        rb.x_deviation=cv2.getTrackbarPos('x-deviation',rb.windowname_)
         frame = frame_queue.get()
         frame=cv2.resize(frame,(1280,960))
         detections = detections_queue.get()
@@ -290,14 +298,14 @@ def serial_(rb):
     print("正在发送数据... 波特率：%d"%ser.baudrate)
     while 1:
         try:
-            #if ser.inWaiting() > 0:
-                #rb.cmd = ser.read(1).decode()
+            if ser.inWaiting() > 0:
+                rb.cmd = ser.read(1).decode()
             time.sleep(0.1)
             if (rb.y > 400) & (rb.d < 4000):
                 rb.can_be_sent = True
             else:
                 rb.can_be_sent = False
-            rb.x = change_rbx(rb)
+            rb.x = change_rbx(rb,X_DEVIATION)
             if rb.can_be_sent:
                 send_data(rb.x,int(rb.d))
 
@@ -324,7 +332,7 @@ def check_ball_pos(rb,y_min=400,d_min = 2000):
     else:
         rb.can_be_sent = False
 
-def change_rbx(rb,x = 15):
+def change_rbx(rb,x):
     if abs(rb.x-256) < x:
         return 256
     else:
